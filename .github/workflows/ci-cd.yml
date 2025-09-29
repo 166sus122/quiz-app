@@ -138,13 +138,45 @@ jobs:
           if [ -f docker-compose.prod.yml.template ]; then
             envsubst < docker-compose.prod.yml.template > docker-compose.prod.yml
           else
-            cp docker-compose.yml docker-compose.prod.yml
-            sed -i "s|build: ./nginx|image: ${DOCKER_USERNAME}/${IMAGE_NAME}-nginx:latest|g" docker-compose.prod.yml
-            sed -i "s|build: ./auth-service|image: ${DOCKER_USERNAME}/${IMAGE_NAME}-auth-service:latest|g" docker-compose.prod.yml
-            sed -i "s|build: ./quiz-app|image: ${DOCKER_USERNAME}/${IMAGE_NAME}-quiz-app:latest|g" docker-compose.prod.yml
-            sed -i "s|build: ./fail2ban|image: ${DOCKER_USERNAME}/${IMAGE_NAME}-fail2ban:latest|g" docker-compose.prod.yml
-            sed -i '/^[[:space:]]*build:/d' docker-compose.prod.yml
-            sed -i '/^[[:space:]]*context:/d' docker-compose.prod.yml
+            # Create a proper production docker-compose file
+            cat > docker-compose.prod.yml <<EOF
+          version: '3.8'
+          
+          services:
+            nginx:
+              image: ${DOCKER_USERNAME}/${IMAGE_NAME}-nginx:latest
+              ports:
+                - "80:80"
+                - "443:443"
+              networks:
+                - app-network
+              depends_on:
+                - auth-service
+                - quiz-app
+              restart: unless-stopped
+          
+            auth-service:
+              image: ${DOCKER_USERNAME}/${IMAGE_NAME}-auth-service:latest
+              networks:
+                - app-network
+              restart: unless-stopped
+          
+            quiz-app:
+              image: ${DOCKER_USERNAME}/${IMAGE_NAME}-quiz-app:latest
+              networks:
+                - app-network
+              restart: unless-stopped
+          
+            fail2ban:
+              image: ${DOCKER_USERNAME}/${IMAGE_NAME}-fail2ban:latest
+              privileged: true
+              network_mode: host
+              restart: unless-stopped
+          
+          networks:
+            app-network:
+              driver: bridge
+          EOF
           fi
 
           cat > deploy.sh <<'EOF'
