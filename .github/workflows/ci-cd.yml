@@ -2,10 +2,10 @@ name: Quiz App CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:  # הפעלה ידנית
+    branches: [main]
+  workflow_dispatch: # הפעלה ידנית
 
 env:
   DOCKER_REGISTRY: docker.io
@@ -17,74 +17,67 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        cd tests
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          cd tests
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Start application stack
-      run: |
-        # בניית הקונטיינרים
-        docker-compose build
+      - name: Start application stack
+        run: |
+          docker-compose build
+          docker-compose up -d
+          echo "Waiting for services to be ready..."
+          sleep 30
 
-        # הפעלה ברקע
-        docker-compose up -d
+          max_attempts=30
+          for i in $(seq 1 $max_attempts); do
+            if curl -f http://localhost/login >/dev/null 2>&1; then
+              echo "✅ Services are ready!"
+              break
+            fi
+            if [ $i -eq $max_attempts ]; then
+              echo "❌ Services failed to start"
+              docker-compose logs
+              exit 1
+            fi
+            echo "Waiting... ($i/$max_attempts)"
+            sleep 2
+          done
 
-        # המתנה שהשירותים יהיו מוכנים
-        echo "Waiting for services to be ready..."
-        sleep 30
+      - name: Run basic tests
+        run: |
+          cd tests
+          python test_basic.py
+          python test_auth.py
 
-        # בדיקה שהשירותים זמינים
-        max_attempts=30
-        for i in $(seq 1 $max_attempts); do
-          if curl -f http://localhost/login >/dev/null 2>&1; then
-            echo "✅ Services are ready!"
-            break
-          fi
-          if [ $i -eq $max_attempts ]; then
-            echo "❌ Services failed to start"
-            docker-compose logs
-            exit 1
-          fi
-          echo "Waiting... ($i/$max_attempts)"
-          sleep 2
-        done
+      - name: Run nginx integration tests
+        run: |
+          cd tests
+          python test_nginx_integration.py
 
-    - name: Run basic tests
-      run: |
-        cd tests
-        python test_basic.py
-        python test_auth.py
+      - name: Show service logs on failure
+        if: failure()
+        run: |
+          echo "=== DOCKER-COMPOSE LOGS ==="
+          docker-compose logs
+          echo "=== CONTAINER STATUS ==="
+          docker-compose ps
 
-    - name: Run nginx integration tests
-      run: |
-        cd tests
-        python test_nginx_integration.py
-
-    - name: Show service logs on failure
-      if: failure()
-      run: |
-        echo "=== DOCKER-COMPOSE LOGS ==="
-        docker-compose logs
-        echo "=== CONTAINER STATUS ==="
-        docker-compose ps
-
-    - name: Cleanup
-      if: always()
-      run: |
-        docker-compose down -v
-        docker system prune -f
+      - name: Cleanup
+        if: always()
+        run: |
+          docker-compose down -v
+          docker system prune -f
 
   # שלב 2: בניית images ו-push ל-Docker Hub
   build-and-push:
@@ -92,45 +85,43 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-
     strategy:
       matrix:
         service: [nginx, auth-service, quiz-app, fail2ban]
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./${{ matrix.service }}
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
 
   # שלב 3: פריסה לסביבת ייצור
   deploy:
@@ -138,105 +129,106 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     if: github.ref == 'refs/heads/main'
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Create deployment files
-      run: |
-        # יצירת docker-compose עבור production
-        envsubst < docker-compose.prod.yml.template > docker-compose.prod.yml || cp docker-compose.yml docker-compose.prod.yml
+      - name: Create deployment files
+        run: |
+          # שימוש במשתני הסביבה האמיתיים (bash)
+          export DOCKER_USERNAME=${DOCKER_USERNAME}
+          export IMAGE_NAME=${IMAGE_NAME}
 
-        # עדכון tags ל-latest
-        sed -i 's|build:|image: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}-nginx:latest #|g' docker-compose.prod.yml
-        sed -i 's|context: ./nginx|#context: ./nginx|g' docker-compose.prod.yml
-
-        # יצירת סקריפט deployment
-        cat > deploy.sh << 'EOF'
-        #!/bin/bash
-        set -e
-
-        echo "🚀 Starting deployment..."
-
-        # עצירת השירותים הקיימים
-        docker-compose -f docker-compose.prod.yml down || true
-
-        # מחיקת images ישנים
-        docker system prune -f || true
-
-        # משיכת images חדשים
-        docker-compose -f docker-compose.prod.yml pull
-
-        # הפעלת השירותים החדשים
-        docker-compose -f docker-compose.prod.yml up -d
-
-        # בדיקה שהשירותים פועלים
-        echo "⏳ Waiting for services to start..."
-        sleep 30
-
-        # בדיקת health
-        if curl -f http://localhost/login >/dev/null 2>&1; then
-          echo "✅ Deployment successful!"
-          docker-compose -f docker-compose.prod.yml ps
-        else
-          echo "❌ Deployment failed - services not responding"
-          docker-compose -f docker-compose.prod.yml logs
-          exit 1
-        fi
-
-        # ניקוי
-        docker image prune -f
-
-        echo "🎉 Deployment completed successfully!"
-        EOF
-
-        chmod +x deploy.sh
-
-    - name: Deploy to server
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        password: ${{ secrets.SERVER_PASSWORD }}
-        script: |
-          # יצירת תיקיית הפרויקט
-          mkdir -p ~/quiz-app-production
-          cd ~/quiz-app-production
-
-          # גיבוי קונפיגורציה ישנה
-          if [ -f docker-compose.prod.yml ]; then
-            cp docker-compose.prod.yml docker-compose.prod.yml.backup.$(date +%Y%m%d_%H%M%S)
+          # אם קיים קובץ תבנית – השתמש בו, אחרת העתק את הקיים
+          if [ -f docker-compose.prod.yml.template ]; then
+            envsubst < docker-compose.prod.yml.template > docker-compose.prod.yml
+          else
+            cp docker-compose.yml docker-compose.prod.yml
+            # עדכן את כל השירותים מ-build ל-image
+            sed -i "s|build: ./nginx|image: \${DOCKER_USERNAME}/\${IMAGE_NAME}-nginx:latest #|g" docker-compose.prod.yml
+            sed -i "s|build: ./auth-service|image: \${DOCKER_USERNAME}/\${IMAGE_NAME}-auth-service:latest #|g" docker-compose.prod.yml
+            sed -i "s|build: ./quiz-app|image: \${DOCKER_USERNAME}/\${IMAGE_NAME}-quiz-app:latest #|g" docker-compose.prod.yml
+            sed -i "s|build: ./fail2ban|image: \${DOCKER_USERNAME}/\${IMAGE_NAME}-fail2ban:latest #|g" docker-compose.prod.yml
+            # הסר שורות context אם קיימות
+            sed -i 's|context:.*|# context removed for prod|g' docker-compose.prod.yml
           fi
 
-    - name: Copy files to server
-      uses: appleboy/scp-action@v0.1.4
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        password: ${{ secrets.SERVER_PASSWORD }}
-        source: "docker-compose.prod.yml,deploy.sh"
-        target: "~/quiz-app-production/"
+          # יצירת סקריפט פריסה עם טיפול בשגיאות
+          cat > deploy.sh << 'EOF'
+#!/bin/bash
+set -e
+echo "🚀 Starting deployment..."
+docker-compose -f docker-compose.prod.yml down || true
+docker system prune -f || true
+docker-compose -f docker-compose.prod.yml pull
+docker-compose -f docker-compose.prod.yml up -d
+echo "⏳ Waiting for services to start..."
+sleep 30
+if curl -f http://localhost/login >/dev/null 2>&1; then
+  echo "✅ Deployment successful!"
+  docker-compose -f docker-compose.prod.yml ps
+else
+  echo "❌ Deployment failed - services not responding"
+  docker-compose -f docker-compose.prod.yml logs
+  exit 1
+fi
+docker image prune -f
+echo "🎉 Deployment completed successfully!"
+EOF
 
-    - name: Run deployment
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        password: ${{ secrets.SERVER_PASSWORD }}
-        script: |
-          cd ~/quiz-app-production
+          chmod +x deploy.sh
 
-          # התחברות ל-Docker Hub
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Prepare server and login to Docker Hub securely
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            if ! echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin; then
+              echo "❌ Failed to login to Docker Hub"
+              exit 1
+            fi
+            mkdir -p ~/quiz-app-production
+            cd ~/quiz-app-production
+            if [ -f docker-compose.prod.yml ]; then
+              cp docker-compose.prod.yml docker-compose.prod.yml.backup.$(date +%Y%m%d_%H%M%S)
+            fi
 
-          # הרצת deployment
-          bash deploy.sh
+      - name: Copy deployment files to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: "docker-compose.prod.yml,deploy.sh"
+          target: "~/quiz-app-production/"
 
-          # הצגת סטטוס סופי
-          echo "=== Final Status ==="
-          docker-compose -f docker-compose.prod.yml ps
-          docker-compose -f docker-compose.prod.yml logs --tail=20
+      - name: Run deployment with rollback on failure
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cd ~/quiz-app-production
+            if ! bash deploy.sh; then
+              echo "❌ Deployment failed, rolling back..."
+              latest_backup=$(ls -t docker-compose.prod.yml.backup.* 2>/dev/null | head -n1)
+              if [ -n "$latest_backup" ]; then
+                echo "Restoring from backup: $latest_backup"
+                cp "$latest_backup" docker-compose.prod.yml
+                bash deploy.sh || echo "⚠️ Rollback also failed!"
+              else
+                echo "⚠️ No backup found for rollback"
+              fi
+              docker logout
+              exit 1
+            fi
+            docker logout
+            echo "=== Final Status ==="
+            docker-compose -f docker-compose.prod.yml ps
+            docker-compose -f docker-compose.prod.yml logs --tail=20
 
   # שלב 4: בדיקות smoke לאחר deployment
   smoke-test:
@@ -244,33 +236,28 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy
     if: github.ref == 'refs/heads/main'
-
     steps:
-    - name: Wait for deployment to stabilize
-      run: sleep 60
+      - name: Wait for deployment to stabilize
+        run: sleep 60
 
-    - name: Run smoke tests
-      run: |
-        # בדיקות בסיסיות על השרת
-        echo "🧪 Running smoke tests..."
+      - name: Run smoke tests
+        run: |
+          echo "🧪 Running smoke tests..."
+          if curl -f http://${{ secrets.SERVER_HOST }}/login; then
+            echo "✅ Login page accessible"
+          else
+            echo "❌ Login page not accessible"
+            exit 1
+          fi
 
-        # בדיקת זמינות האתר
-        if curl -f http://${{ secrets.SERVER_HOST }}/login; then
-          echo "✅ Login page accessible"
-        else
-          echo "❌ Login page not accessible"
-          exit 1
-        fi
+          if curl -f http://${{ secrets.SERVER_HOST }}/api/question --max-time 10 >/dev/null 2>&1; then
+            echo "✅ API endpoint is reachable"
+          else
+            echo "❌ API endpoint not reachable"
+            exit 1
+          fi
 
-        # בדיקת API endpoint (ללא אימות - צריך להחזיר שגיאה)
-        if curl -f http://${{ secrets.SERVER_HOST }}/api/question | grep -q "error"; then
-          echo "✅ API responding correctly"
-        else
-          echo "❌ API not responding correctly"
-          exit 1
-        fi
-
-        echo "🎉 All smoke tests passed!"
+          echo "🎉 All smoke tests passed!"
 
   # שלב 5: התראות
   notify:
@@ -278,26 +265,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, build-and-push, deploy, smoke-test]
     if: always()
-
     steps:
-    - name: Notify on success
-      if: ${{ needs.deploy.result == 'success' && needs.smoke-test.result == 'success' }}
-      run: |
-        echo "🎉 Deployment successful!"
-        echo "✅ Tests: ${{ needs.test.result }}"
-        echo "✅ Build: ${{ needs.build-and-push.result }}"
-        echo "✅ Deploy: ${{ needs.deploy.result }}"
-        echo "✅ Smoke tests: ${{ needs.smoke-test.result }}"
+      - name: Notify on full success
+        if: ${{ needs.deploy.result == 'success' && needs.smoke-test.result == 'success' }}
+        run: |
+          echo "🎉 Deployment pipeline completed successfully!"
+          echo "✅ Tests: ${{ needs.test.result }}"
+          echo "✅ Build & Push: ${{ needs.build-and-push.result }}"
+          echo "✅ Deploy: ${{ needs.deploy.result }}"
+          echo "✅ Smoke Tests: ${{ needs.smoke-test.result }}"
 
-        # כאן ניתן להוסיף התראות ל-Slack/Discord/Email
-
-    - name: Notify on failure
-      if: failure()
-      run: |
-        echo "❌ Deployment failed!"
-        echo "Tests: ${{ needs.test.result }}"
-        echo "Build: ${{ needs.build-and-push.result }}"
-        echo "Deploy: ${{ needs.deploy.result }}"
-        echo "Smoke tests: ${{ needs.smoke-test.result }}"
-
-        # כאן ניתן להוסיף התראות כשל
+      - name: Notify on any failure
+        if: ${{ failure() }}
+        run: |
+          echo "❌ CI/CD pipeline failed!"
+          echo "Tests: ${{ needs.test.result }}"
+          echo "Build & Push: ${{ needs.build-and-push.result }}"
+          echo "Deploy: ${{ needs.deploy.result }}"
+          echo "Smoke Tests: ${{ needs.smoke-test.result }}"
