@@ -5,7 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
-  workflow_dispatch: # הפעלה ידנית
+  workflow_dispatch:
 
 env:
   DOCKER_REGISTRY: docker.io
@@ -13,7 +13,6 @@ env:
   IMAGE_NAME: quiz-app
 
 jobs:
-  # שלב 1: בדיקות והכנה
   test:
     name: Run Tests
     runs-on: ubuntu-latest
@@ -79,7 +78,6 @@ jobs:
           docker-compose down -v
           docker system prune -f
 
-  # שלב 2: בניית images ו-push ל-Docker Hub
   build-and-push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
@@ -123,7 +121,6 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-  # שלב 3: פריסה לסביבת ייצור
   deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
@@ -135,51 +132,47 @@ jobs:
 
       - name: Create deployment files
         run: |
-          # שימוש במשתני הסביבה האמיתיים (bash)
-          export DOCKER_USERNAME=${DOCKER_USERNAME}
-          export IMAGE_NAME=${IMAGE_NAME}
-
-          # אם קיים קובץ תבנית – השתמש בו, אחרת העתק את הקיים
+          export DOCKER_USERNAME="${{ env.DOCKER_USERNAME }}"
+          export IMAGE_NAME="${{ env.IMAGE_NAME }}"
+          
           if [ -f docker-compose.prod.yml.template ]; then
             envsubst < docker-compose.prod.yml.template > docker-compose.prod.yml
           else
             cp docker-compose.yml docker-compose.prod.yml
-            # עדכן את כל השירותים מ-build ל-image
-            sed -i "s|build: ./nginx|image: \${DOCKER_USERNAME}/\${IMAGE_NAME}-nginx:latest #|g" docker-compose.prod.yml
-            sed -i "s|build: ./auth-service|image: \${DOCKER_USERNAME}/\${IMAGE_NAME}-auth-service:latest #|g" docker-compose.prod.yml
-            sed -i "s|build: ./quiz-app|image: \${DOCKER_USERNAME}/\${IMAGE_NAME}-quiz-app:latest #|g" docker-compose.prod.yml
-            sed -i "s|build: ./fail2ban|image: \${DOCKER_USERNAME}/\${IMAGE_NAME}-fail2ban:latest #|g" docker-compose.prod.yml
-            # הסר שורות context אם קיימות
-            sed -i 's|context:.*|# context removed for prod|g' docker-compose.prod.yml
+            sed -i "s|build: ./nginx|image: ${DOCKER_USERNAME}/${IMAGE_NAME}-nginx:latest|g" docker-compose.prod.yml
+            sed -i "s|build: ./auth-service|image: ${DOCKER_USERNAME}/${IMAGE_NAME}-auth-service:latest|g" docker-compose.prod.yml
+            sed -i "s|build: ./quiz-app|image: ${DOCKER_USERNAME}/${IMAGE_NAME}-quiz-app:latest|g" docker-compose.prod.yml
+            sed -i "s|build: ./fail2ban|image: ${DOCKER_USERNAME}/${IMAGE_NAME}-fail2ban:latest|g" docker-compose.prod.yml
+            sed -i '/^[[:space:]]*build:/d' docker-compose.prod.yml
+            sed -i '/^[[:space:]]*context:/d' docker-compose.prod.yml
           fi
 
-          # יצירת סקריפט פריסה עם טיפול בשגיאות
-          cat > deploy.sh << 'EOF'
-#!/bin/bash
-set -e
-echo "🚀 Starting deployment..."
-docker-compose -f docker-compose.prod.yml down || true
-docker system prune -f || true
-docker-compose -f docker-compose.prod.yml pull
-docker-compose -f docker-compose.prod.yml up -d
-echo "⏳ Waiting for services to start..."
-sleep 30
-if curl -f http://localhost/login >/dev/null 2>&1; then
-  echo "✅ Deployment successful!"
-  docker-compose -f docker-compose.prod.yml ps
-else
-  echo "❌ Deployment failed - services not responding"
-  docker-compose -f docker-compose.prod.yml logs
-  exit 1
-fi
-docker image prune -f
-echo "🎉 Deployment completed successfully!"
-EOF
+          cat > deploy.sh <<'EOF'
+          #!/bin/bash
+          set -e
+          echo "🚀 Starting deployment..."
+          docker-compose -f docker-compose.prod.yml down || true
+          docker system prune -f || true
+          docker-compose -f docker-compose.prod.yml pull
+          docker-compose -f docker-compose.prod.yml up -d
+          echo "⏳ Waiting for services to start..."
+          sleep 30
+          if curl -f http://localhost/login >/dev/null 2>&1; then
+            echo "✅ Deployment successful!"
+            docker-compose -f docker-compose.prod.yml ps
+          else
+            echo "❌ Deployment failed - services not responding"
+            docker-compose -f docker-compose.prod.yml logs
+            exit 1
+          fi
+          docker image prune -f
+          echo "🎉 Deployment completed successfully!"
+          EOF
 
           chmod +x deploy.sh
 
-      - name: Prepare server and login to Docker Hub securely
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Prepare server and login to Docker Hub
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -196,7 +189,7 @@ EOF
             fi
 
       - name: Copy deployment files to server
-        uses: appleboy/scp-action@v0.1.4
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -204,8 +197,8 @@ EOF
           source: "docker-compose.prod.yml,deploy.sh"
           target: "~/quiz-app-production/"
 
-      - name: Run deployment with rollback on failure
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Run deployment with rollback
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -230,7 +223,6 @@ EOF
             docker-compose -f docker-compose.prod.yml ps
             docker-compose -f docker-compose.prod.yml logs --tail=20
 
-  # שלב 4: בדיקות smoke לאחר deployment
   smoke-test:
     name: Post-Deployment Smoke Tests
     runs-on: ubuntu-latest
@@ -259,15 +251,14 @@ EOF
 
           echo "🎉 All smoke tests passed!"
 
-  # שלב 5: התראות
   notify:
     name: Send Notifications
     runs-on: ubuntu-latest
     needs: [test, build-and-push, deploy, smoke-test]
     if: always()
     steps:
-      - name: Notify on full success
-        if: ${{ needs.deploy.result == 'success' && needs.smoke-test.result == 'success' }}
+      - name: Notify on success
+        if: needs.deploy.result == 'success' && needs.smoke-test.result == 'success'
         run: |
           echo "🎉 Deployment pipeline completed successfully!"
           echo "✅ Tests: ${{ needs.test.result }}"
@@ -275,8 +266,8 @@ EOF
           echo "✅ Deploy: ${{ needs.deploy.result }}"
           echo "✅ Smoke Tests: ${{ needs.smoke-test.result }}"
 
-      - name: Notify on any failure
-        if: ${{ failure() }}
+      - name: Notify on failure
+        if: failure() || needs.test.result == 'failure' || needs.build-and-push.result == 'failure' || needs.deploy.result == 'failure' || needs.smoke-test.result == 'failure'
         run: |
           echo "❌ CI/CD pipeline failed!"
           echo "Tests: ${{ needs.test.result }}"
