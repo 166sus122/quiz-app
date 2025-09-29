@@ -1,4 +1,5 @@
 from flask import Flask, render_template, jsonify, request, redirect, session
+from flask.sessions import SecureCookieSessionInterface
 import json
 import random
 import requests
@@ -12,26 +13,47 @@ app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_PATH'] = '/'
 
+# Custom session interface that doesn't set domain
+class NoDomainSessionInterface(SecureCookieSessionInterface):
+    def get_cookie_domain(self, app):
+        # Return False to explicitly disable domain attribute
+        return False
+
+    def save_session(self, app, session, response):
+        # Override to ensure domain is not set
+        domain = self.get_cookie_domain(app)
+        path = self.get_cookie_path(app)
+        name = self.get_cookie_name(app)
+
+        if not session:
+            if session.modified:
+                response.delete_cookie(
+                    name,
+                    path=path
+                )
+            return
+
+        httponly = self.get_cookie_httponly(app)
+        secure = self.get_cookie_secure(app)
+        samesite = self.get_cookie_samesite(app)
+        expires = self.get_expiration_time(app, session)
+        val = self.get_signing_serializer(app).dumps(dict(session))
+
+        response.set_cookie(
+            name,
+            val,
+            expires=expires,
+            httponly=httponly,
+            secure=secure,
+            path=path,
+            samesite=samesite,
+            domain=None  # Explicitly set to None to disable domain attribute
+        )
+
+app.session_interface = NoDomainSessionInterface()
+
 AUTH_SERVICE_URL = 'http://auth-service:5001'
 QUESTIONS_FILE = 'questions.json'
-
-@app.after_request
-def remove_cookie_domain(response):
-    """Remove Domain attribute from session cookie to make it work with both localhost and 127.0.0.1"""
-    cookies = response.headers.getlist('Set-Cookie')
-    if cookies:
-        # Clear all Set-Cookie headers
-        del response.headers['Set-Cookie']
-
-        # Add them back with Domain removed
-        for cookie in cookies:
-            if 'session=' in cookie:
-                # Remove all variations of Domain=localhost
-                import re
-                cookie = re.sub(r'Domain=[^;]+;\s*', '', cookie)
-                cookie = re.sub(r';\s*Domain=[^;]+', '', cookie)
-            response.headers.add('Set-Cookie', cookie)
-    return response
 
 def load_questions():
     with open(QUESTIONS_FILE, 'r', encoding='utf-8') as f:

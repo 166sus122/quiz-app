@@ -215,7 +215,7 @@ class TestAuthentication(unittest.TestCase):
             "password": "admin123"
         }
 
-        auth_response = self.session.post(f"{self.base_url}/auth", data=auth_data)
+        auth_response = self.session.post(f"{self.base_url}/auth", data=auth_data, allow_redirects=False)
         self.assertEqual(auth_response.status_code, 302)
 
         # בדיקה שה-session נשמר למספר בקשות
