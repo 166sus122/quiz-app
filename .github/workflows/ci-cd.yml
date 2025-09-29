@@ -187,18 +187,30 @@ jobs:
           # Stop existing containers first
           docker compose -f docker-compose.prod.yml down || true
 
+          # Stop common web servers that might be using port 80
+          echo "🔍 Checking for existing web servers..."
+          sudo systemctl stop apache2 2>/dev/null || true
+          sudo systemctl stop nginx 2>/dev/null || true
+          sudo systemctl stop lighttpd 2>/dev/null || true
+
           # Kill any process using port 80
           sudo fuser -k 80/tcp 2>/dev/null || true
 
           # Kill any docker-proxy processes on port 80
           sudo pkill -f "docker-proxy.*80" || true
 
+          # Kill any Python HTTP servers on port 80
+          sudo pkill -f "python.*http.server.*80" || true
+          sudo pkill -f "python.*SimpleHTTPServer.*80" || true
+
           # Wait for ports to be released
           sleep 3
 
           # Verify port 80 is free
           if sudo lsof -i :80 >/dev/null 2>&1; then
-            echo "⚠️ Port 80 still in use, forcing cleanup..."
+            echo "⚠️ Port 80 still in use, showing what's using it:"
+            sudo lsof -i :80
+            echo "Forcing cleanup..."
             sudo lsof -ti :80 | xargs -r sudo kill -9 || true
             sleep 2
           fi
