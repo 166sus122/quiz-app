@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: dov121212/quiz-app-nginx:latest
+    container_name: quiz-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"  # עבור HTTPS בעתיד
+    volumes:
+      - nginx_logs:/var/log/nginx
+      - ./ssl:/etc/nginx/ssl:ro  # עבור SSL certificates
+    networks:
+      - quiz-network
+    restart: unless-stopped
+    depends_on:
+      - auth-service
+      - quiz-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  auth-service:
+    image: dov121212/quiz-app-auth-service:latest
+    container_name: quiz-auth-prod
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-shared-secret-key-between-services-change-in-production}
+    volumes:
+      - auth_data:/app/data
+    networks:
+      - quiz-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5001/login')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  quiz-app:
+    image: dov121212/quiz-app-quiz-app:latest
+    container_name: quiz-app-prod
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-shared-secret-key-between-services-change-in-production}
+    volumes:
+      - quiz_data:/app/data
+    networks:
+      - quiz-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5002/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  fail2ban:
+    image: dov121212/quiz-app-fail2ban:latest
+    container_name: quiz-fail2ban-prod
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+    volumes:
+      - nginx_logs:/var/log/nginx:ro
+      - fail2ban_data:/var/lib/fail2ban
+    networks:
+      - quiz-network
+    restart: unless-stopped
+    depends_on:
+      - nginx
+
+  # שירות ניטור (אופציונלי)
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower-prod
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 0 2 * * *  # בדיקה יומית ב-2:00
+      - WATCHTOWER_NOTIFICATIONS=email
+      - WATCHTOWER_NOTIFICATION_EMAIL_FROM=${EMAIL_FROM}
+      - WATCHTOWER_NOTIFICATION_EMAIL_TO=${EMAIL_TO}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=${EMAIL_SERVER}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=${EMAIL_PORT}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=${EMAIL_USER}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=${EMAIL_PASSWORD}
+    restart: unless-stopped
+
+volumes:
+  nginx_logs:
+    name: quiz_nginx_logs_prod
+  auth_data:
+    name: quiz_auth_data_prod
+  quiz_data:
+    name: quiz_data_prod
+  fail2ban_data:
+    name: quiz_fail2ban_data_prod
+
+networks:
+  quiz-network:
+    name: quiz_network_prod
+    driver: bridge

@@ -1,0 +1,76 @@
+# קבצי Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# קבצי IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# קבצי מערכת הפעלה
+.DS_Store
+Thumbs.db
+*.log
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Secrets ו-configuration
+.env
+.env.local
+.env.production
+*.pem
+*.key
+*.crt
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Test files
+coverage/
+.coverage
+.pytest_cache/
+.tox/
+
+# CI/CD artifacts
+node_modules/
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cookie files (מהטסטים)
+/tmp/*.txt
+tests/*.txt
+
+# Backup files
+*.backup.*
+*.bak
+
+# Local deployment files
+docker-compose.local.yml
