@@ -3,16 +3,39 @@ import sqlite3
 import hashlib
 import secrets
 from datetime import timedelta
+import os
 
 app = Flask(__name__)
 # שימוש בsecret key קבוע כדי שכל השירותים יוכלו לקרוא את אותם sessions
-app.secret_key = 'shared-secret-key-between-services-change-in-production'
+app.secret_key = os.getenv('SESSION_SECRET', 'shared-secret-key-between-services-change-in-production')
 app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_DOMAIN'] = 'localhost'
+app.config['SESSION_COOKIE_PATH'] = '/'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
 DB_PATH = 'users.db'
+
+@app.after_request
+def remove_cookie_domain(response):
+    """Remove Domain attribute from session cookie to make it work with both localhost and 127.0.0.1"""
+    try:
+        import re
+        cookies = list(response.headers.getlist('Set-Cookie'))
+        if cookies:
+            # Remove all Set-Cookie headers
+            response.headers['Set-Cookie'] = ''
+
+            # Add them back with Domain removed
+            for cookie in cookies:
+                if 'session=' in cookie:
+                    # Remove Domain=localhost
+                    cookie = re.sub(r';\s*Domain=[^;]+', '', cookie)
+                response.set_cookie = cookie
+        return response
+    except Exception as e:
+        print(f"ERROR in after_request: {e}")
+        return response
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()

@@ -2,16 +2,36 @@ from flask import Flask, render_template, jsonify, request, redirect, session
 import json
 import random
 import requests
+import os
 
 app = Flask(__name__)
 # שימוש באותו secret key כמו ב-auth-service כדי לשתף sessions
-app.secret_key = 'shared-secret-key-between-services-change-in-production'
+app.secret_key = os.getenv('SESSION_SECRET', 'shared-secret-key-between-services-change-in-production')
 app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_DOMAIN'] = 'localhost'
+app.config['SESSION_COOKIE_PATH'] = '/'
 
 AUTH_SERVICE_URL = 'http://auth-service:5001'
 QUESTIONS_FILE = 'questions.json'
+
+@app.after_request
+def remove_cookie_domain(response):
+    """Remove Domain attribute from session cookie to make it work with both localhost and 127.0.0.1"""
+    cookies = response.headers.getlist('Set-Cookie')
+    if cookies:
+        # Clear all Set-Cookie headers
+        del response.headers['Set-Cookie']
+
+        # Add them back with Domain removed
+        for cookie in cookies:
+            if 'session=' in cookie:
+                # Remove all variations of Domain=localhost
+                import re
+                cookie = re.sub(r'Domain=[^;]+;\s*', '', cookie)
+                cookie = re.sub(r';\s*Domain=[^;]+', '', cookie)
+            response.headers.add('Set-Cookie', cookie)
+    return response
 
 def load_questions():
     with open(QUESTIONS_FILE, 'r', encoding='utf-8') as f:
