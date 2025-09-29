@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>משחק החידות</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 1.8em;
+        }
+        
+        .score-container {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .score {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .logout-btn {
+            padding: 10px 20px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s;
+        }
+        
+        .logout-btn:hover {
+            background: #c0392b;
+        }
+        
+        .quiz-card {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .question-counter {
+            color: #999;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+        
+        .question {
+            font-size: 1.5em;
+            color: #333;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .option {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 1.1em;
+        }
+        
+        .option:hover {
+            background: #e8f0fe;
+            border-color: #667eea;
+            transform: translateX(-5px);
+        }
+        
+        .option.selected {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .option.correct {
+            background: #27ae60;
+            color: white;
+            border-color: #27ae60;
+        }
+        
+        .option.incorrect {
+            background: #e74c3c;
+            color: white;
+            border-color: #e74c3c;
+        }
+        
+        .option.disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        
+        .btn {
+            padding: 15px 40px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+        
+        .btn-secondary:hover:not(:disabled) {
+            background: #7f8c8d;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .feedback {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 1em;
+            display: none;
+        }
+        
+        .feedback.show {
+            display: block;
+        }
+        
+        .feedback.correct {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+        
+        .feedback.incorrect {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+        
+        .explanation {
+            margin-top: 10px;
+            font-style: italic;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2em;
+            color: #666;
+        }
+        
+        @media (max-width: 600px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .quiz-card {
+                padding: 20px;
+            }
+            
+            .question {
+                font-size: 1.2em;
+            }
+            
+            .buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧩 משחק החידות</h1>
+            <div class="score-container">
+                <div class="score">ניקוד: <span id="score">0</span></div>
+                <button class="logout-btn" onclick="logout()">יציאה</button>
+            </div>
+        </div>
+        
+        <div class="quiz-card">
+            <div id="loading" class="loading">טוען שאלה...</div>
+            
+            <div id="quiz-content" style="display: none;">
+                <div class="question-counter">
+                    שאלה <span id="question-num">1</span> מתוך 20
+                </div>
+                
+                <div class="question" id="question"></div>
+                
+                <div class="options" id="options"></div>
+                
+                <div class="feedback" id="feedback">
+                    <div id="feedback-text"></div>
+                    <div class="explanation" id="explanation"></div>
+                </div>
+                
+                <div class="buttons">
+                    <button class="btn btn-primary" id="submit-btn" onclick="submitAnswer()" disabled>
+                        בדוק תשובה
+                    </button>
+                    <button class="btn btn-secondary" id="next-btn" onclick="nextQuestion()" style="display: none;">
+                        שאלה הבאה
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentQuestion = null;
+        let selectedAnswer = null;
+        let score = 0;
+        let questionCount = 0;
+        let answeredQuestions = new Set();
+        
+        async function loadQuestion() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('quiz-content').style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/question');
+                const data = await response.json();
+                
+                if (data.error) {
+                    if (data.redirect) {
+                        window.location.href = data.redirect;
+                        return;
+                    }
+                    alert(data.error);
+                    return;
+                }
+                
+                currentQuestion = data;
+                displayQuestion();
+            } catch (error) {
+                console.error('שגיאה בטעינת שאלה:', error);
+                alert('שגיאה בטעינת שאלה');
+            }
+        }
+        
+        function displayQuestion() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('quiz-content').style.display = 'block';
+            
+            document.getElementById('question').textContent = currentQuestion.question;
+            document.getElementById('question-num').textContent = questionCount + 1;
+            
+            const optionsDiv = document.getElementById('options');
+            optionsDiv.innerHTML = '';
+            
+            if (currentQuestion.type === 'multiple_choice') {
+                currentQuestion.options.forEach((option, index) => {
+                    const optionDiv = document.createElement('div');
+                    optionDiv.className = 'option';
+                    optionDiv.textContent = option;
+                    optionDiv.onclick = () => selectOption(index);
+                    optionsDiv.appendChild(optionDiv);
+                });
+            } else {
+                ['נכון', 'לא נכון'].forEach((option, index) => {
+                    const optionDiv = document.createElement('div');
+                    optionDiv.className = 'option';
+                    optionDiv.textContent = option;
+                    optionDiv.onclick = () => selectOption(index === 0);
+                    optionsDiv.appendChild(optionDiv);
+                });
+            }
+            
+            selectedAnswer = null;
+            document.getElementById('submit-btn').disabled = true;
+            document.getElementById('feedback').classList.remove('show', 'correct', 'incorrect');
+            document.getElementById('next-btn').style.display = 'none';
+        }
+        
+        function selectOption(answer) {
+            if (document.getElementById('submit-btn').style.display === 'none') return;
+            
+            selectedAnswer = answer;
+            
+            const options = document.querySelectorAll('.option');
+            options.forEach((opt, idx) => {
+                opt.classList.remove('selected');
+                if ((currentQuestion.type === 'multiple_choice' && idx === answer) ||
+                    (currentQuestion.type === 'true_false' && ((answer === true && idx === 0) || (answer === false && idx === 1)))) {
+                    opt.classList.add('selected');
+                }
+            });
+            
+            document.getElementById('submit-btn').disabled = false;
+        }
+        
+        async function submitAnswer() {
+            if (selectedAnswer === null) return;
+            
+            try {
+                const response = await fetch('/api/answer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        question_id: currentQuestion.id,
+                        answer: selectedAnswer
+                    })
+                });
+                
+                const result = await response.json();
+                
+                const options = document.querySelectorAll('.option');
+                options.forEach(opt => {
+                    opt.classList.add('disabled');
+                    opt.onclick = null;
+                });
+                
+                if (result.correct) {
+                    score = result.score;
+                    document.getElementById('score').textContent = score;
+                    
+                    if (currentQuestion.type === 'multiple_choice') {
+                        options[selectedAnswer].classList.add('correct');
+                    } else {
+                        options[selectedAnswer === true ? 0 : 1].classList.add('correct');
+                    }
+                    
+                    document.getElementById('feedback').classList.add('show', 'correct');
+                    document.getElementById('feedback-text').textContent = '✓ תשובה נכונה! כל הכבוד!';
+                } else {
+                    if (currentQuestion.type === 'multiple_choice') {
+                        options[selectedAnswer].classList.add('incorrect');
+                        options[currentQuestion.correct_answer].classList.add('correct');
+                        } else {
+                        options[selectedAnswer === true ? 0 : 1].classList.add('incorrect');
+                        options[currentQuestion.correct_answer === true ? 0 : 1].classList.add('correct');
+                    }
+                    
+                    document.getElementById('feedback').classList.add('show', 'incorrect');
+                    document.getElementById('feedback-text').textContent = '✗ תשובה שגויה. נסה שוב בפעם הבאה!';
+                }
+                
+                if (currentQuestion.explanation) {
+                    document.getElementById('explanation').textContent = '💡 ' + currentQuestion.explanation;
+                } else {
+                    document.getElementById('explanation').textContent = '';
+                }
+                
+                document.getElementById('submit-btn').style.display = 'none';
+                document.getElementById('next-btn').style.display = 'inline-block';
+                
+                answeredQuestions.add(currentQuestion.id);
+                questionCount++;
+                
+            } catch (error) {
+                console.error('שגיאה בשליחת תשובה:', error);
+                alert('שגיאה בשליחת תשובה');
+            }
+        }
+        
+        function nextQuestion() {
+            if (questionCount >= 20) {
+                showFinalScore();
+                return;
+            }
+            
+            document.getElementById('submit-btn').style.display = 'inline-block';
+            document.getElementById('next-btn').style.display = 'none';
+            loadQuestion();
+        }
+        
+        function showFinalScore() {
+            const quizCard = document.querySelector('.quiz-card');
+            quizCard.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <h2 style="color: #667eea; font-size: 2.5em; margin-bottom: 20px;">🎉 סיימת!</h2>
+                    <p style="font-size: 1.5em; margin-bottom: 30px;">הניקוד הסופי שלך:</p>
+                    <div style="font-size: 4em; font-weight: bold; color: #27ae60; margin-bottom: 30px;">${score}</div>
+                    <p style="font-size: 1.2em; color: #666; margin-bottom: 40px;">
+                        ${score >= 15 ? 'מעולה! אתה מומחה אמיתי! 🏆' : 
+                          score >= 10 ? 'עבודה טובה! ממשיך להתקדם! 👍' : 
+                          'לא נורא, נסה שוב! 💪'}
+                    </p>
+                    <button class="btn btn-primary" onclick="resetGame()" style="font-size: 1.2em;">
+                        משחק חדש
+                    </button>
+                </div>
+            `;
+        }
+        
+        function resetGame() {
+            score = 0;
+            questionCount = 0;
+            answeredQuestions.clear();
+            document.getElementById('score').textContent = '0';
+            
+            const quizCard = document.querySelector('.quiz-card');
+            quizCard.innerHTML = `
+                <div id="loading" class="loading">טוען שאלה...</div>
+                
+                <div id="quiz-content" style="display: none;">
+                    <div class="question-counter">
+                        שאלה <span id="question-num">1</span> מתוך 20
+                    </div>
+                    
+                    <div class="question" id="question"></div>
+                    
+                    <div class="options" id="options"></div>
+                    
+                    <div class="feedback" id="feedback">
+                        <div id="feedback-text"></div>
+                        <div class="explanation" id="explanation"></div>
+                    </div>
+                    
+                    <div class="buttons">
+                        <button class="btn btn-primary" id="submit-btn" onclick="submitAnswer()" disabled>
+                            בדוק תשובה
+                        </button>
+                        <button class="btn btn-secondary" id="next-btn" onclick="nextQuestion()" style="display: none;">
+                            שאלה הבאה
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            loadQuestion();
+        }
+        
+        async function logout() {
+            try {
+                await fetch('/logout');
+                window.location.href = '/login';
+            } catch (error) {
+                console.error('שגיאה ביציאה:', error);
+                window.location.href = '/login';
+            }
+        }
+        
+        // טעינת השאלה הראשונה בעת טעינת הדף
+        window.onload = loadQuestion;
+    </script>
+</body>
+</html>
