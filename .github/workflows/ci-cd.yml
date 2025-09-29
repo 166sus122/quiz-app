@@ -183,6 +183,11 @@ jobs:
           #!/bin/bash
           set -e
           echo "🚀 Starting deployment..."
+
+          # Kill any process using port 80
+          sudo fuser -k 80/tcp 2>/dev/null || true
+          sleep 2
+
           docker compose -f docker-compose.prod.yml down || true
           docker system prune -f || true
           docker compose -f docker-compose.prod.yml pull
