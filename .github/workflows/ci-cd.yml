@@ -298,17 +298,23 @@ jobs:
       - name: Run smoke tests
         run: |
           echo "🧪 Running smoke tests..."
-          if curl -f http://${{ secrets.SERVER_HOST }}/login; then
+          if curl -f http://${{ secrets.SERVER_HOST }}/login >/dev/null 2>&1; then
             echo "✅ Login page accessible"
           else
             echo "❌ Login page not accessible"
             exit 1
           fi
 
-          if curl -f http://${{ secrets.SERVER_HOST }}/api/question --max-time 10 >/dev/null 2>&1; then
-            echo "✅ API endpoint is reachable"
+          # Test authentication endpoint
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://${{ secrets.SERVER_HOST }}/auth \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "username=admin&password=admin123" --max-time 10)
+
+          if [ "$response" = "302" ] || [ "$response" = "200" ]; then
+            echo "✅ Auth endpoint is working (HTTP $response)"
           else
-            echo "❌ API endpoint not reachable"
+            echo "❌ Auth endpoint failed (HTTP $response)"
             exit 1
           fi
 

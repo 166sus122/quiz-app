@@ -29,14 +29,13 @@ services:
       context: ./fail2ban
       dockerfile: Dockerfile
     container_name: quiz-fail2ban
+    network_mode: host
     privileged: true
     volumes:
       - nginx_logs:/var/log/nginx:ro
       - /var/run/fail2ban:/var/run/fail2ban
     depends_on:
       - nginx
-    networks:
-      - quiz-network
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
