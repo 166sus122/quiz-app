@@ -33,8 +33,9 @@ jobs:
 
       - name: Start application stack
         run: |
-          # השבתת rate limiting לטסטים
+          # השבתת rate limiting לטסטים (שתי השכבות)
           sed -i 's/limit_req zone=auth_limit/#limit_req zone=auth_limit/g' nginx/nginx.conf
+          sed -i 's/limit_req zone=auth_strict/#limit_req zone=auth_strict/g' nginx/nginx.conf
 
           docker compose build
           docker compose up -d
