@@ -11,11 +11,12 @@ RUN apk add --no-cache \
 RUN mkdir -p /var/log/nginx /var/log/fail2ban
 
 # יצירת תיקייה לתצורות fail2ban
-RUN mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d
+RUN mkdir -p /etc/fail2ban/filter.d /etc/fail2ban/jail.d /etc/fail2ban/action.d
 
 # העתקת תצורות fail2ban
 COPY jail.local /etc/fail2ban/jail.local
 COPY filter.d/nginx-auth.conf /etc/fail2ban/filter.d/nginx-auth.conf
+COPY action.d/docker-action.conf /etc/fail2ban/action.d/docker-action.conf
 
 # סקריפט התחלה
 COPY start-fail2ban.sh /start-fail2ban.sh

@@ -8,11 +8,11 @@ findtime = 120
 # מספר ניסיונות כושלים לפני חסימה
 maxretry = 3
 
-# פעולת חסימה
-banaction = iptables-multiport
+# פעולת חסימה - שימוש ב-Docker action
+banaction = docker-action
 
-# רשימה לבנה של IP שלא לחסום
-ignoreip = 127.0.0.1/8 ::1
+# רשימה לבנה של IP שלא לחסום (רק loopback אמיתי)
+ignoreip = ::1
 
 [nginx-auth]
 enabled = true
